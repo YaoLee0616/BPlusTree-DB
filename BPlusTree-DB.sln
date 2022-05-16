@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32210.238
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BPlusTree-DB", "BPlusTree-DB.vcxproj", "{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Debug|x64.ActiveCfg = Debug|x64
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Debug|x64.Build.0 = Debug|x64
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Debug|x86.ActiveCfg = Debug|Win32
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Debug|x86.Build.0 = Debug|Win32
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Release|x64.ActiveCfg = Release|x64
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Release|x64.Build.0 = Release|x64
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Release|x86.ActiveCfg = Release|Win32
+		{43C73DF6-CEE2-439D-8D16-F7BE7F991D2C}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {38B9FC38-DB8E-4CD2-AA85-807C168BA8FC}
+	EndGlobalSection
+EndGlobal
