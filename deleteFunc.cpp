@@ -1,6 +1,6 @@
 #include "functions.h"
 
 
-void deleteValue() {
+void deleteData() {
 	cout << "Ö´ÐÐdelete²Ù×÷" << endl;
 }
