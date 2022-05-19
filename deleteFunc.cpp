@@ -1,6 +1,5 @@
 #include "functions.h"
 
-
 void deleteData() {
-	cout << "执行delete操作" << endl;
+	cout << "执行delete操作(TODO)" << endl;
 }
