@@ -1,18 +1,18 @@
 #define _CRT_SECURE_NO_WARNINGS
 
-#include<iostream>
+#include <iostream>
 #include <string>
 #include <cstring>
 #include <vector>
-#include<sstream>
-#include<fstream>
+#include <sstream>
+#include <fstream>
 
 extern FILE* fp; // 全局变量 fp
 
 /** 宏定义 **/
 #define PAGE_MAX_LENGTH 4*1024 // 页大小设为4KB
-#define BT_NODE_MAX 500 // 索引节点最多有500个key
-#define DATA_NODE_MAX 7 // 叶子节点最多有7个key
+#define BT_PAGE_KEY_MAX 500 // 索引页最多有500个key
+#define DATA_PAGE_KEY_MAX 7 // 叶子页最多有7个key
 
 #define INSERT "insert"
 #define SELECT "select"
@@ -22,22 +22,22 @@ extern FILE* fp; // 全局变量 fp
 
 #define ERROR "输入命令错误，请重新输入" 
 
-#define FILE_NAME "data"
+#define FILE_NAME "data.ibd"
 
-// 初始化结点
-#define MALLOC_NODE(p,type) type* p = (type*)malloc(sizeof(type)); memset(p,0,sizeof(type));
+// 申请并初始化页
+#define MALLOC_PAGE(p,type) type* p = (type*)malloc(sizeof(type)); memset(p,0,sizeof(type));
 
-// 释放结点
-#define FREE_NODE(p) free(p);
+// 释放页
+#define FREE_PAGE(p) free(p);
 
 // 以mode形式打开文件
 #define OPEN_FILE(file_name,mode) fopen(file_name,mode)
 
-// 以mode形式打开文件,并读出文件头结点
+// 以mode形式打开文件,并读出文件头页面
 #define OPEN_FILE_READ(file_name,mode,buf,size) fp = OPEN_FILE(file_name,mode); fread(buf,size,1,fp);
 
 // 文件末尾开始写
-#define FSEEK_END_WRITE(fp,pos,buf,size,pageCount) fseek(fp, pageCount*PAGE_MAX_LENGTH, SEEK_SET);pos=ftell(fp); fwrite(buf,size,1,fp);
+#define FSEEK_END_WRITE(fp,pos,buf,size,page_count) fseek(fp, page_count*PAGE_MAX_LENGTH, SEEK_SET);pos=ftell(fp); fwrite(buf,size,1,fp);
 
 // 指定位置开始读
 #define FSEEK_FIXED_READ(fp,pos,buf,size) fseek(fp,pos,SEEK_SET); fread(buf,size,1,fp);
@@ -55,20 +55,20 @@ typedef unsigned int uint;
 
 /* 文件头结构体 */
 typedef struct {
-    int orderNum; // B+树的阶数
-    uint pageSize; // 页大小
-    uint pageCount; // B+树的总结点数量
-    uint rootPos; // 根结点所在的数据块的位置，它的值是相对于文件头部的偏移值。
+    int order; // B+树的阶数
+    uint page_size; // 页大小
+    uint page_count; // 已存页的数量
+    uint root_page_pos; // b+树根页面所在位置，它的值是相对于文件头部的偏移值。
 }FileHead;
 
-/* 索引结点结构体 */
+/* 索引页结构体 */
 typedef struct {
-    int nodeType; // 结点类型，用于判断是索引结点，还是数据结点
-    int Count; // 一个索引页里已存了多少key
-    uint parent; // 父结点
-    uint key[BT_NODE_MAX + 1]; // 索引值
-    uint ptr[BT_NODE_MAX + 1]; // 子结点位置
-}BTNode;
+    int page_type; // 页面类型，用于判断是索引页，还是数据页
+    int key_count; // 已存key的数量
+    uint parent_page_pos; // 父页面所在位置
+    uint key[BT_PAGE_KEY_MAX + 1]; // 索引值
+    uint child_page_pos[BT_PAGE_KEY_MAX + 1]; // 子页面所在位置
+}BTPage;
 
 /* 数据结构体 */
 typedef struct {
@@ -78,34 +78,35 @@ typedef struct {
     char c4[81];
 }Data;
 
-/* 数据结点结构体 */
+/* 数据页结构体 */
 typedef struct {
-    int nodeType; // 结点类型，用于判断是索引结点，还是数据结点
-    int Count; // 一个数据页里已存了多少key
-    bool Is_inc_insert; // 是否递增插入
-    bool Is_dec_insert; // 是否递减插入
-    uint parent; // 父结点
-    uint prevPtr; // 前驱数据结点
-    uint nextPtr; // 后继数据结点
-    uint key[DATA_NODE_MAX + 1]; // 数据对的key值
-    Data data[DATA_NODE_MAX + 1]; // 数据对的data值
-}DataNode;
+    int page_type; // 页面类型，用于判断是索引页，还是数据页
+    int key_count; // 已存key的数量
+    bool is_inc_insert; // 是否递增插入
+    bool is_dec_insert; // 是否递减插入
+    uint parent_page_pos; // 父页面所在位置
+    uint prev_page_pos; // 前一个页面所在位置
+    uint next_page_pos; // 后一个页面所在位置
+    uint key[DATA_PAGE_KEY_MAX + 1]; // 一条数据的key值
+    Data data[DATA_PAGE_KEY_MAX + 1]; // 一条数据的data值
+}DataPage;
 
 /* 查找结果结构体 */
 typedef struct {
-    uint ptr; // 指向结点的位置
-    int index; // 在结点中的关键字序号
-    bool found; // 是否找到
+    uint pos; // 指向的位置
+    int index; // 在页中的关键字序号
+    bool is_found; // 是否找到
 } Result;
+
 
 /* 接口 */
 bool insertData(Data data, uint key); // 插入单条数据
 int loadCsvData(string csv_file_name); // 以文件导入的方式插入大量数据
 
-int searchBTIndex(BTNode* btNodeBuf, uint key); // 查找key在索引结点中的位置
-void searchDataNode(uint node_pos, uint key, Result* result); // 查找数据结点
+int searchBTIndex(BTPage* btPageBuf, uint key); // 查找key在索引页中的位置
+void searchDataPage(uint page__pos, uint key, Result* result); // 查找数据页
 bool selectData(uint key, vector<bool> field); // 主键等值查询数据
 void selectRangeData(uint left, uint right, vector<bool> field); // 主键索引范围扫描查询数据
-int outputCsvData(uint left,uint right,string csv_file_name); // 主键索引范围扫描的查询导出数据
+int outputCsvData(uint left, uint right, string csv_file_name); // 主键索引范围扫描的查询导出数据
 
 void deleteData();

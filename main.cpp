@@ -15,49 +15,49 @@ void Stringsplit(string str, const char split, vector<string>& res) // ·Ö¸î×Ö·û´
 /* ´´½¨Êý¾ÝÎÄ¼þ */
 void createDataFile() {
 	fp = OPEN_FILE(FILE_NAME, "rb");
-	if (fp== NULL) {
+	if (fp == NULL) {
 
-		uint node_pos;
+		uint page_pos;
 
-		MALLOC_NODE(fileHead, FileHead);
-		MALLOC_NODE(btNode, BTNode);
-		MALLOC_NODE(dataNode, DataNode);
+		MALLOC_PAGE(fileHead, FileHead);
+		MALLOC_PAGE(btPage, BTPage);
+		MALLOC_PAGE(dataPage, DataPage);
 
 
 		fp = OPEN_FILE(FILE_NAME, "wb+");
 
 		/* ³õÊ¼»¯fileHead */
-		fileHead->orderNum = DATA_NODE_MAX;
-		fileHead->pageSize = PAGE_MAX_LENGTH;
-		fileHead->pageCount = 3;
-		fileHead->rootPos = 0;
+		fileHead->order = DATA_PAGE_KEY_MAX;
+		fileHead->page_size = PAGE_MAX_LENGTH;
+		fileHead->page_count = 3;
+		fileHead->root_page_pos = 0;
 
-		FSEEK_END_WRITE(fp, node_pos, fileHead, sizeof(FileHead),0);
+		FSEEK_END_WRITE(fp, page_pos, fileHead, sizeof(FileHead), 0);
 
-		/** ³õÊ¼»¯fileHeadÖ¸ÏòµÄµÚÒ»¸öbtNode **/
-		btNode->nodeType = 1;
-		btNode->Count = 1;
-		btNode->key[0] = 0;
-		FSEEK_END_WRITE(fp, node_pos, btNode, sizeof(BTNode),1);
-		fileHead->rootPos = node_pos;
+		/** ³õÊ¼»¯fileHeadÖ¸ÏòµÄµÚÒ»¸öbtPage **/
+		btPage->page_type = 1;
+		btPage->key_count = 1;
+		btPage->key[0] = 0;
+		FSEEK_END_WRITE(fp, page_pos, btPage, sizeof(BTPage), 1);
+		fileHead->root_page_pos = page_pos;
 
-		/** ³õÊ¼»¯btNodeÖ¸ÏòµÄµÚÒ»¸ödataNode **/
-		
-		dataNode->nodeType = 2;
-		dataNode->Count = 0;
-		dataNode->Is_inc_insert = true;
-		dataNode->Is_dec_insert = true;
-		dataNode->parent = node_pos;
-		FSEEK_END_WRITE(fp, node_pos, dataNode, sizeof(DataNode),2);
-		btNode->ptr[0] = node_pos;
+		/** ³õÊ¼»¯btPageÖ¸ÏòµÄµÚÒ»¸ödataPage **/
+
+		dataPage->page_type = 2;
+		dataPage->key_count = 0;
+		dataPage->is_inc_insert = true;
+		dataPage->is_dec_insert = true;
+		dataPage->parent_page_pos = page_pos;
+		FSEEK_END_WRITE(fp, page_pos, dataPage, sizeof(DataPage), 2);
+		btPage->child_page_pos[0] = page_pos;
 
 		FSEEK_FIXED_WRITE(fp, 0, fileHead, sizeof(FileHead));
-		FSEEK_FIXED_WRITE(fp, fileHead->rootPos, btNode, sizeof(BTNode));
+		FSEEK_FIXED_WRITE(fp, fileHead->root_page_pos, btPage, sizeof(BTPage));
 
 		CLOSE_FILE(fp);
-		FREE_NODE(fileHead);
-		FREE_NODE(btNode);
-		FREE_NODE(dataNode);
+		FREE_PAGE(fileHead);
+		FREE_PAGE(btPage);
+		FREE_PAGE(dataPage);
 	}
 
 	else {
@@ -76,7 +76,7 @@ vector<bool> fieldChoice(string str) {
 	Stringsplit(str, ',', fieldList);	// ½«×Ó´®´æ·Åµ½fieldListÖÐ
 	for (int i = 0; i < fieldList.size(); i++) {
 		for (int j = 0; j < 5; j++) {
-			if (fieldList[i]==set[j])
+			if (fieldList[i] == set[j])
 				field[j] = true;
 		}
 	}
@@ -91,12 +91,12 @@ int main() {
 		string str;
 		getline(cin, str);
 		vector<string> strList;
-		Stringsplit(str, ' ', strList);	
+		Stringsplit(str, ' ', strList);
 		string menu = strList[0];
 
 		/* ²åÈëÊý¾Ý */
 		if (menu.compare(INSERT) == 0) {
-			
+
 			if (strList.size() == 6) { // ²åÈëµ¥ÌõÊý¾Ý
 				Data data;
 
@@ -135,7 +135,7 @@ int main() {
 				vector<bool> field = fieldChoice(strList[1]);
 				string str = strList[3];
 				vector<string> strList;
-				Stringsplit(str, '=', strList);	
+				Stringsplit(str, '=', strList);
 
 				clock_t start, end;
 				start = clock();
@@ -146,7 +146,7 @@ int main() {
 				}
 				else {
 					end = clock();
-					cout <<"index:" << stoi(strList[1]) << " doesn't exist£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+					cout << "index:" << stoi(strList[1]) << " doesn't exist£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
 				}
 			}
 			else if (strList.size() == 8) { // Ö÷¼üË÷Òý·¶Î§É¨Ãè²éÑ¯Êý¾Ý
@@ -155,7 +155,7 @@ int main() {
 				clock_t start, end;
 				start = clock();
 
-				selectRangeData(stoi(strList[5]), stoi(strList[7]),field);
+				selectRangeData(stoi(strList[5]), stoi(strList[7]), field);
 
 				end = clock();
 				cout << "executed search£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
@@ -164,9 +164,9 @@ int main() {
 			else if (strList.size() == 9) { // Ö÷¼üË÷Òý·¶Î§É¨ÃèµÄ²éÑ¯µ¼³öÊý¾Ý
 				cout << "export data start..." << endl;
 				clock_t start, end;
-				start = clock(); 
+				start = clock();
 				outputCsvData(stoi(strList[6]), stoi(strList[8]), strList[2]);
-				end = clock();   
+				end = clock();
 				cout << "export data end£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;  //Êä³öÊ±¼ä£¨µ¥Î»£º£ó£©
 			}
 			else {
@@ -175,7 +175,7 @@ int main() {
 
 		}
 
-		/* É¾³ýÊý¾ÝTODO */ 
+		/* É¾³ýÊý¾ÝTODO */
 		else if (menu.compare(DELETE) == 0) {
 			deleteData(); // TODO
 		}
@@ -191,7 +191,7 @@ int main() {
 		}
 
 		else {
-			cout << ERROR<< endl;
+			cout << ERROR << endl;
 		}
 	}
 }

@@ -2,223 +2,223 @@
 
 /* 获取文件中页的数量 */
 uint getPageCount() {
-	MALLOC_NODE(fileHeadBuf, FileHead);
+	MALLOC_PAGE(fileHeadBuf, FileHead);
 	FSEEK_FIXED_READ(fp, 0, fileHeadBuf, sizeof(FileHead));
-	uint pageCount = fileHeadBuf->pageCount;
-	FREE_NODE(fileHeadBuf);
-	return pageCount;
+	uint page_count = fileHeadBuf->page_count;
+	FREE_PAGE(fileHeadBuf);
+	return page_count;
 }
 
-/* 更新页头结点信息 */
-void updateFileHead(uint new_head_pos) {
-	MALLOC_NODE(fileHeadBuf, FileHead);
+/* 更新文件头信息 */
+void updateFileHead(uint new_root_page_pos) {
+	MALLOC_PAGE(fileHeadBuf, FileHead);
 	FSEEK_FIXED_READ(fp, 0, fileHeadBuf, sizeof(FileHead));
-	if (new_head_pos > 0) {
-		fileHeadBuf->rootPos = new_head_pos;
+	if (new_root_page_pos > 0) {
+		fileHeadBuf->root_page_pos = new_root_page_pos;
 	}
-	fileHeadBuf->pageCount++;
+	fileHeadBuf->page_count++;
 	FSEEK_FIXED_WRITE(fp, 0, fileHeadBuf, sizeof(FileHead));
-	FREE_NODE(fileHeadBuf);
+	FREE_PAGE(fileHeadBuf);
 }
 
-/* 插入索引结点 */
-BTNode insertBTNode(uint node_pos, int index, uint key, uint ap) {
+/* 插入索引页 */
+BTPage insertBTPage(uint page_pos, int index, uint key, uint ap) {
 
-	BTNode buf;
-	BTNode* btNodeBuf = &buf;
+	BTPage buf;
+	BTPage* btPageBuf = &buf;
 
-	FSEEK_FIXED_READ(fp, node_pos, btNodeBuf, sizeof(BTNode));
+	FSEEK_FIXED_READ(fp, page_pos, btPageBuf, sizeof(BTPage));
 
 	int j;
-	for (j = btNodeBuf->Count - 1; j >= index; j--) {
-		btNodeBuf->key[j + 1] = btNodeBuf->key[j];
-		btNodeBuf->ptr[j + 1] = btNodeBuf->ptr[j];
+	for (j = btPageBuf->key_count - 1; j >= index; j--) {
+		btPageBuf->key[j + 1] = btPageBuf->key[j];
+		btPageBuf->child_page_pos[j + 1] = btPageBuf->child_page_pos[j];
 	}
-	btNodeBuf->key[index] = key;
-	btNodeBuf->ptr[index] = ap;
+	btPageBuf->key[index] = key;
+	btPageBuf->child_page_pos[index] = ap;
 
-	btNodeBuf->Count++;
-	FSEEK_FIXED_WRITE(fp, node_pos, btNodeBuf, sizeof(BTNode));
-	return (*btNodeBuf);
+	btPageBuf->key_count++;
+	FSEEK_FIXED_WRITE(fp, page_pos, btPageBuf, sizeof(BTPage));
+	return (*btPageBuf);
 }
 
-/* 插入数据结点 */
-DataNode insertDataNode(uint node_pos, int index, uint key, Data data) {
-	DataNode buf;
-	DataNode* dataNodeBuf = &buf;
+/* 插入数据页 */
+DataPage insertDataPage(uint page_pos, int index, uint key, Data data) {
+	DataPage buf;
+	DataPage* dataPageBuf = &buf;
 
-	FSEEK_FIXED_READ(fp, node_pos, dataNodeBuf, sizeof(DataNode));
-	if (index != 0) dataNodeBuf->Is_dec_insert = false;
-	if (index != dataNodeBuf->Count) dataNodeBuf->Is_inc_insert = false;
+	FSEEK_FIXED_READ(fp, page_pos, dataPageBuf, sizeof(DataPage));
+	if (index != 0) dataPageBuf->is_dec_insert = false;
+	if (index != dataPageBuf->key_count) dataPageBuf->is_inc_insert = false;
 
 	int j;
-	if (dataNodeBuf->Count != 0) {
-		for (j = dataNodeBuf->Count - 1; j >= index; j--) {
-			dataNodeBuf->key[j + 1] = dataNodeBuf->key[j];
-			dataNodeBuf->data[j + 1] = dataNodeBuf->data[j];
+	if (dataPageBuf->key_count != 0) {
+		for (j = dataPageBuf->key_count - 1; j >= index; j--) {
+			dataPageBuf->key[j + 1] = dataPageBuf->key[j];
+			dataPageBuf->data[j + 1] = dataPageBuf->data[j];
 		}
 	}
 
-	dataNodeBuf->key[index] = key;
-	dataNodeBuf->data[index] = data;
+	dataPageBuf->key[index] = key;
+	dataPageBuf->data[index] = data;
 
-	dataNodeBuf->Count++;
-	FSEEK_FIXED_WRITE(fp, node_pos, dataNodeBuf, sizeof(DataNode));
-	return (*dataNodeBuf);
+	dataPageBuf->key_count++;
+	FSEEK_FIXED_WRITE(fp, page_pos, dataPageBuf, sizeof(DataPage));
+	return (*dataPageBuf);
 }
 
-/* 分裂数据结点 */
-uint splitDataNode(DataNode* dataNodeBuf, uint node_pos, int s) {
+/* 分裂数据页 */
+uint splitDataPage(DataPage* dataPageBuf, uint page_pos, int s) {
 
 	int i, j;
-	int n = dataNodeBuf->Count;
+	int n = dataPageBuf->key_count;
 	uint ap;
 
-	MALLOC_NODE(apDataNodeBuf, DataNode);
+	MALLOC_PAGE(apDataPageBuf, DataPage);
 
 	for (i = s + 1, j = 0; i < n; i++, j++) {
-		apDataNodeBuf->key[j] = dataNodeBuf->key[i];
-		apDataNodeBuf->data[j] = dataNodeBuf->data[i];
+		apDataPageBuf->key[j] = dataPageBuf->key[i];
+		apDataPageBuf->data[j] = dataPageBuf->data[i];
 	}
-	apDataNodeBuf->nodeType = 2;
-	apDataNodeBuf->Count = n - s - 1;
-	apDataNodeBuf->Is_inc_insert = true;
-	apDataNodeBuf->Is_dec_insert = true;
-	apDataNodeBuf->parent = dataNodeBuf->parent;
-	apDataNodeBuf->prevPtr = node_pos;
-	apDataNodeBuf->nextPtr = dataNodeBuf->nextPtr;
+	apDataPageBuf->page_type = 2;
+	apDataPageBuf->key_count = n - s - 1;
+	apDataPageBuf->is_inc_insert = true;
+	apDataPageBuf->is_dec_insert = true;
+	apDataPageBuf->parent_page_pos = dataPageBuf->parent_page_pos;
+	apDataPageBuf->prev_page_pos = page_pos;
+	apDataPageBuf->next_page_pos = dataPageBuf->next_page_pos;
 
-	uint pageCount = getPageCount();
-	FSEEK_END_WRITE(fp, ap, apDataNodeBuf, sizeof(DataNode), pageCount);
+	uint page_count = getPageCount();
+	FSEEK_END_WRITE(fp, ap, apDataPageBuf, sizeof(DataPage), page_count);
 
 	updateFileHead(0);
 
-	dataNodeBuf->Count = s + 1;
-	dataNodeBuf->nextPtr = ap;
-	FSEEK_FIXED_WRITE(fp, node_pos, dataNodeBuf, sizeof(DataNode));
-	FREE_NODE(apDataNodeBuf);
+	dataPageBuf->key_count = s + 1;
+	dataPageBuf->next_page_pos = ap;
+	FSEEK_FIXED_WRITE(fp, page_pos, dataPageBuf, sizeof(DataPage));
+	FREE_PAGE(apDataPageBuf);
 	return ap;
 }
 
-/* 分裂索引结点 */
-uint splitBTNode(BTNode* btNodeBuf, uint node_pos, int s) {
+/* 分裂索引页 */
+uint splitBTPage(BTPage* btPageBuf, uint page_pos, int s) {
 
 	int i, j;
-	int n = btNodeBuf->Count;
+	int n = btPageBuf->key_count;
 	uint ap;
 
-	MALLOC_NODE(apBTNodeBuf, BTNode);
-	MALLOC_NODE(apBTNodeBufChild, BTNode);
-	MALLOC_NODE(apDataNodeBufChild, DataNode);
+	MALLOC_PAGE(apBTPageBuf, BTPage);
+	MALLOC_PAGE(apBTPageBufChild, BTPage);
+	MALLOC_PAGE(apDataPageBufChild, DataPage);
 
 	for (i = s, j = 0; i < n; i++, j++) {
-		apBTNodeBuf->key[j] = btNodeBuf->key[i];
-		apBTNodeBuf->ptr[j] = btNodeBuf->ptr[i];
+		apBTPageBuf->key[j] = btPageBuf->key[i];
+		apBTPageBuf->child_page_pos[j] = btPageBuf->child_page_pos[i];
 	}
-	apBTNodeBuf->nodeType = 1;
-	apBTNodeBuf->Count = n - s;
-	apBTNodeBuf->parent = btNodeBuf->parent;
+	apBTPageBuf->page_type = 1;
+	apBTPageBuf->key_count = n - s;
+	apBTPageBuf->parent_page_pos = btPageBuf->parent_page_pos;
 
-	uint pageCount = getPageCount();
-	FSEEK_END_WRITE(fp, ap, apBTNodeBuf, sizeof(BTNode), pageCount);
+	uint page_count = getPageCount();
+	FSEEK_END_WRITE(fp, ap, apBTPageBuf, sizeof(BTPage), page_count);
 
 	updateFileHead(0);
 
 	for (int i = 0; i < n - s; i++) {
-		if (apBTNodeBuf->ptr[i] != 0) {
-			FSEEK_FIXED_READ(fp, apBTNodeBuf->ptr[i], apBTNodeBufChild, sizeof(BTNode));
-			if (apBTNodeBufChild->nodeType == 2) {
-				FSEEK_FIXED_READ(fp, apBTNodeBuf->ptr[i], apDataNodeBufChild, sizeof(DataNode));
-				apDataNodeBufChild->parent = ap;
-				FSEEK_FIXED_WRITE(fp, apBTNodeBuf->ptr[i], apDataNodeBufChild, sizeof(DataNode));
+		if (apBTPageBuf->child_page_pos[i] != 0) {
+			FSEEK_FIXED_READ(fp, apBTPageBuf->child_page_pos[i], apBTPageBufChild, sizeof(BTPage));
+			if (apBTPageBufChild->page_type == 2) {
+				FSEEK_FIXED_READ(fp, apBTPageBuf->child_page_pos[i], apDataPageBufChild, sizeof(DataPage));
+				apDataPageBufChild->parent_page_pos = ap;
+				FSEEK_FIXED_WRITE(fp, apBTPageBuf->child_page_pos[i], apDataPageBufChild, sizeof(DataPage));
 			}
 			else {
-				apBTNodeBufChild->parent = ap;
-				FSEEK_FIXED_WRITE(fp, apBTNodeBuf->ptr[i], apBTNodeBufChild, sizeof(BTNode));
+				apBTPageBufChild->parent_page_pos = ap;
+				FSEEK_FIXED_WRITE(fp, apBTPageBuf->child_page_pos[i], apBTPageBufChild, sizeof(BTPage));
 			}
 		}
 	}
 
-	btNodeBuf->Count = s;
+	btPageBuf->key_count = s;
 
-	FSEEK_FIXED_WRITE(fp, node_pos, btNodeBuf, sizeof(BTNode));
-	FREE_NODE(apBTNodeBuf);
-	FREE_NODE(apBTNodeBufChild);
-	FREE_NODE(apDataNodeBufChild);
+	FSEEK_FIXED_WRITE(fp, page_pos, btPageBuf, sizeof(BTPage));
+	FREE_PAGE(apBTPageBuf);
+	FREE_PAGE(apBTPageBufChild);
+	FREE_PAGE(apDataPageBufChild);
 	return (ap);
 }
 
-/* 新建根结点 */
-void newRoot(uint head_pos, uint key, uint ap) {
+/* 新建根页面 */
+void newRoot(uint root_page_pos, uint key, uint ap) {
 	uint pos;
-	MALLOC_NODE(rootBTNodeBuf, BTNode);
-	rootBTNodeBuf->nodeType = 1;
-	rootBTNodeBuf->Count = 2;
-	rootBTNodeBuf->ptr[0] = head_pos;
-	rootBTNodeBuf->ptr[1] = ap;
-	rootBTNodeBuf->key[0] = 0;
-	rootBTNodeBuf->key[1] = key;
+	MALLOC_PAGE(rootBTPageBuf, BTPage);
+	rootBTPageBuf->page_type = 1;
+	rootBTPageBuf->key_count = 2;
+	rootBTPageBuf->child_page_pos[0] = root_page_pos;
+	rootBTPageBuf->child_page_pos[1] = ap;
+	rootBTPageBuf->key[0] = 0;
+	rootBTPageBuf->key[1] = key;
 
-	uint pageCount = getPageCount();
-	FSEEK_END_WRITE(fp, pos, rootBTNodeBuf, sizeof(BTNode), pageCount);
+	uint page_count = getPageCount();
+	FSEEK_END_WRITE(fp, pos, rootBTPageBuf, sizeof(BTPage), page_count);
 
-	/* 读取原根结点更新parent位置 */
-	FSEEK_FIXED_READ(fp, head_pos, rootBTNodeBuf, sizeof(BTNode));
-	rootBTNodeBuf->parent = pos;
-	FSEEK_FIXED_WRITE(fp, head_pos, rootBTNodeBuf, sizeof(BTNode));
+	/* 读取原根页面更新parent_page_pos位置 */
+	FSEEK_FIXED_READ(fp, root_page_pos, rootBTPageBuf, sizeof(BTPage));
+	rootBTPageBuf->parent_page_pos = pos;
+	FSEEK_FIXED_WRITE(fp, root_page_pos, rootBTPageBuf, sizeof(BTPage));
 
-	/* 读取分裂结点更新parent位置 */
-	FSEEK_FIXED_READ(fp, ap, rootBTNodeBuf, sizeof(BTNode));
-	rootBTNodeBuf->parent = pos;
-	FSEEK_FIXED_WRITE(fp, ap, rootBTNodeBuf, sizeof(BTNode));
+	/* 读取分裂页面更新parent_page_pos位置 */
+	FSEEK_FIXED_READ(fp, ap, rootBTPageBuf, sizeof(BTPage));
+	rootBTPageBuf->parent_page_pos = pos;
+	FSEEK_FIXED_WRITE(fp, ap, rootBTPageBuf, sizeof(BTPage));
 
 	updateFileHead(pos);
 
-	FREE_NODE(rootBTNodeBuf);
+	FREE_PAGE(rootBTPageBuf);
 }
 
-/* 将数据插入树 */
-void insertBTree(uint head_pos, uint key, uint node_pos, int i, Data data) {
+/* 将数据插入B+树 */
+void insertBPlusTree(uint head_pos, uint key, uint page_pos, int i, Data data) {
 	int s = 0;
 	uint ap = 0;
 	bool finished = false;
 	bool needNewRoot = false;
-	DataNode dataNodeBuf;
-	dataNodeBuf = insertDataNode(node_pos, i, key, data);
-	if (dataNodeBuf.Count <= DATA_NODE_MAX) finished = true;
+	DataPage dataPageBuf;
+	dataPageBuf = insertDataPage(page_pos, i, key, data);
+	if (dataPageBuf.key_count <= DATA_PAGE_KEY_MAX) finished = true;
 
 	if (!finished) {
-		if (dataNodeBuf.Is_inc_insert) {
-			s = DATA_NODE_MAX - 1;
+		if (dataPageBuf.is_inc_insert) {
+			s = DATA_PAGE_KEY_MAX - 1;
 		}
-		else if (dataNodeBuf.Is_dec_insert) {
+		else if (dataPageBuf.is_dec_insert) {
 			s = 0;
 		}
 		else {
-			s = (DATA_NODE_MAX + 1) / 2 - 1;
+			s = (DATA_PAGE_KEY_MAX + 1) / 2 - 1;
 		}
-		ap = splitDataNode(&dataNodeBuf, node_pos, s);
-		key = dataNodeBuf.key[s];
-		node_pos = dataNodeBuf.parent;
-		BTNode btNodeBuf;
-		FSEEK_FIXED_READ(fp, node_pos, &btNodeBuf, sizeof(BTNode));
-		i = searchBTIndex(&btNodeBuf, key);
+		ap = splitDataPage(&dataPageBuf, page_pos, s);
+		key = dataPageBuf.key[s];
+		page_pos = dataPageBuf.parent_page_pos;
+		BTPage btPageBuf;
+		FSEEK_FIXED_READ(fp, page_pos, &btPageBuf, sizeof(BTPage));
+		i = searchBTIndex(&btPageBuf, key);
 	}
 
-	BTNode btNodeBuf;
+	BTPage btPageBuf;
 	while (!needNewRoot && !finished) {
-		btNodeBuf = insertBTNode(node_pos, i, key, ap);
-		if (btNodeBuf.Count <= BT_NODE_MAX) {
+		btPageBuf = insertBTPage(page_pos, i, key, ap);
+		if (btPageBuf.key_count <= BT_PAGE_KEY_MAX) {
 			finished = true;
 		}
 		else {
-			s = (BT_NODE_MAX + 1) / 2 - 1;
-			ap = splitBTNode(&btNodeBuf, node_pos, s);
-			key = btNodeBuf.key[s];
-			if (btNodeBuf.parent != 0) {
-				node_pos = btNodeBuf.parent;
-				FSEEK_FIXED_READ(fp, node_pos, &btNodeBuf, sizeof(BTNode));
-				i = searchBTIndex(&btNodeBuf, key);
+			s = (BT_PAGE_KEY_MAX + 1) / 2 - 1;
+			ap = splitBTPage(&btPageBuf, page_pos, s);
+			key = btPageBuf.key[s];
+			if (btPageBuf.parent_page_pos != 0) {
+				page_pos = btPageBuf.parent_page_pos;
+				FSEEK_FIXED_READ(fp, page_pos, &btPageBuf, sizeof(BTPage));
+				i = searchBTIndex(&btPageBuf, key);
 			}
 			else {
 				needNewRoot = true;
@@ -231,20 +231,20 @@ void insertBTree(uint head_pos, uint key, uint node_pos, int i, Data data) {
 }
 /* 插入单条数据 */
 bool insertData(Data data, uint key) {
-	MALLOC_NODE(fileHeadBuf, FileHead);
+	MALLOC_PAGE(fileHeadBuf, FileHead);
 
 	OPEN_FILE_READ(FILE_NAME, "rb+", fileHeadBuf, sizeof(FileHead));
 	Result result;
-	searchDataNode(fileHeadBuf->rootPos, key, &result);
-	if (result.found) {
+	searchDataPage(fileHeadBuf->root_page_pos, key, &result);
+	if (result.is_found) {
 		cout << "index:" << key << " already exists" << endl;
-		FREE_NODE(fileHeadBuf);
+		FREE_PAGE(fileHeadBuf);
 		CLOSE_FILE(fp);
 		return false;
 	}
 	else {
-		insertBTree(fileHeadBuf->rootPos, key, result.ptr, result.index, data);
-		FREE_NODE(fileHeadBuf);
+		insertBPlusTree(fileHeadBuf->root_page_pos, key, result.pos, result.index, data);
+		FREE_PAGE(fileHeadBuf);
 		CLOSE_FILE(fp);
 		return true;
 	}
@@ -254,7 +254,6 @@ bool insertData(Data data, uint key) {
 int loadCsvData(string csv_file_name) {
 	ifstream inFile(csv_file_name, ios::in);
 	string lineStr;
-	vector<vector<string>> strArray;
 	int cnt = 0;
 	Data data;
 	while (getline(inFile, lineStr))
@@ -264,13 +263,12 @@ int loadCsvData(string csv_file_name) {
 		vector<string> strList;
 		while (getline(ss, str, (char)0x09))
 			strList.push_back(str);
-		strArray.push_back(strList);
 		uint key = stoi(strList[0]);
 		strcpy(data.c1, strList[1].c_str());
 		strcpy(data.c2, strList[2].c_str());
 		strcpy(data.c3, strList[3].c_str());
 		strcpy(data.c4, strList[4].c_str());
-		if(insertData(data, key))
+		if (insertData(data, key))
 			cnt++;
 	}
 
