@@ -17,6 +17,7 @@ extern FILE* fp; // 全局变量 fp
 #define INSERT "insert"
 #define SELECT "select"
 #define DELETE "delete"
+#define RESET "reset"
 #define SHUTDOWN "shutdown"
 
 #define ERROR "输入命令错误，请重新输入" 
@@ -64,23 +65,25 @@ typedef struct {
 typedef struct {
     int nodeType; // 结点类型，用于判断是索引结点，还是数据结点
     int Count; // 一个索引页里已存了多少key
-    uint parent; // f父结点
+    uint parent; // 父结点
     uint key[BT_NODE_MAX + 1]; // 索引值
     uint ptr[BT_NODE_MAX + 1]; // 子结点位置
 }BTNode;
 
 /* 数据结构体 */
 typedef struct {
-    char c1[128];
-    char c2[128];
-    char c3[128];
-    char c4[80];
+    char c1[129];
+    char c2[129];
+    char c3[129];
+    char c4[81];
 }Data;
 
 /* 数据结点结构体 */
 typedef struct {
     int nodeType; // 结点类型，用于判断是索引结点，还是数据结点
     int Count; // 一个数据页里已存了多少key
+    bool Is_inc_insert; // 是否递增插入
+    bool Is_dec_insert; // 是否递减插入
     uint parent; // 父结点
     uint prevPtr; // 前驱数据结点
     uint nextPtr; // 后继数据结点
@@ -88,6 +91,7 @@ typedef struct {
     Data data[DATA_NODE_MAX + 1]; // 数据对的data值
 }DataNode;
 
+/* 查找结果结构体 */
 typedef struct {
     uint ptr; // 指向结点的位置
     int index; // 在结点中的关键字序号
@@ -95,7 +99,6 @@ typedef struct {
 } Result;
 
 /* 接口 */
-
 bool insertData(Data data, uint key); // 插入单条数据
 int loadCsvData(string csv_file_name); // 以文件导入的方式插入大量数据
 

@@ -48,6 +48,8 @@ DataNode insertDataNode(uint node_pos, int index, uint key, Data data) {
 	DataNode* dataNodeBuf = &buf;
 
 	FSEEK_FIXED_READ(fp, node_pos, dataNodeBuf, sizeof(DataNode));
+	if (index != 0) dataNodeBuf->Is_dec_insert = false;
+	if (index != dataNodeBuf->Count) dataNodeBuf->Is_inc_insert = false;
 
 	int j;
 	if (dataNodeBuf->Count != 0) {
@@ -80,6 +82,8 @@ uint splitDataNode(DataNode* dataNodeBuf, uint node_pos, int s) {
 	}
 	apDataNodeBuf->nodeType = 2;
 	apDataNodeBuf->Count = n - s - 1;
+	apDataNodeBuf->Is_inc_insert = true;
+	apDataNodeBuf->Is_dec_insert = true;
 	apDataNodeBuf->parent = dataNodeBuf->parent;
 	apDataNodeBuf->prevPtr = node_pos;
 	apDataNodeBuf->nextPtr = dataNodeBuf->nextPtr;
@@ -184,7 +188,15 @@ void insertBTree(uint head_pos, uint key, uint node_pos, int i, Data data) {
 	if (dataNodeBuf.Count <= DATA_NODE_MAX) finished = true;
 
 	if (!finished) {
-		s = (DATA_NODE_MAX + 1) / 2 - 1;
+		if (dataNodeBuf.Is_inc_insert) {
+			s = DATA_NODE_MAX - 1;
+		}
+		else if (dataNodeBuf.Is_dec_insert) {
+			s = 0;
+		}
+		else {
+			s = (DATA_NODE_MAX + 1) / 2 - 1;
+		}
 		ap = splitDataNode(&dataNodeBuf, node_pos, s);
 		key = dataNodeBuf.key[s];
 		node_pos = dataNodeBuf.parent;
@@ -261,6 +273,7 @@ int loadCsvData(string csv_file_name) {
 		if(insertData(data, key))
 			cnt++;
 	}
+
 	inFile.close();
 	return cnt;
 }

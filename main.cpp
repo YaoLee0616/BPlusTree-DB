@@ -36,7 +36,7 @@ void createDataFile() {
 		fileHead.rootPos = node_pos;
 
 		/** 初始化btNode指向的第一个dataNode **/
-		dataNode = { 2,0 };
+		dataNode = { 2,0,true,true};
 		dataNode.parent = node_pos;
 		FSEEK_END_WRITE(fp, node_pos, (char*)&dataNode, sizeof(DataNode),2);
 		btNode.ptr[0] = node_pos;
@@ -165,6 +165,11 @@ int main() {
 		/* 删除数据TODO */ 
 		else if (menu.compare(DELETE) == 0) {
 			deleteData(); // TODO
+		}
+
+		else if (menu.compare(RESET) == 0) {
+			remove(FILE_NAME);
+			createDataFile();
 		}
 
 		/* 关闭程序 */
