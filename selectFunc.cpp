@@ -137,7 +137,7 @@ void selectRangeData(uint left, uint right,vector<bool> field) {
 
 	printHeader(field);
 	uint cur = result.index;
-	while (dataNodeBuf->key[cur] <= right) {
+	while (dataNodeBuf->key[cur]!=0&&dataNodeBuf->key[cur] <= right) {
 
 		printData(dataNodeBuf, field, cur);
 		if (cur < dataNodeBuf->Count - 1) {

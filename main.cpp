@@ -19,32 +19,45 @@ void createDataFile() {
 
 		uint node_pos;
 
-		FileHead fileHead;
-		BTNode btNode;
-		DataNode dataNode;
+		MALLOC_NODE(fileHead, FileHead);
+		MALLOC_NODE(btNode, BTNode);
+		MALLOC_NODE(dataNode, DataNode);
+
 
 		fp = OPEN_FILE(FILE_NAME, "wb+");
 
 		/* 初始化fileHead */
-		fileHead = { DATA_NODE_MAX,PAGE_MAX_LENGTH,3,0};
-		FSEEK_END_WRITE(fp, node_pos, (char*)&fileHead, sizeof(FileHead),0);
+		fileHead->orderNum = DATA_NODE_MAX;
+		fileHead->pageSize = PAGE_MAX_LENGTH;
+		fileHead->pageCount = 3;
+		fileHead->rootPos = 0;
+
+		FSEEK_END_WRITE(fp, node_pos, fileHead, sizeof(FileHead),0);
 
 		/** 初始化fileHead指向的第一个btNode **/
-		btNode = { 1,1 };
-		btNode.key[0] = 0;
-		FSEEK_END_WRITE(fp, node_pos, (char*)&btNode, sizeof(BTNode),1);
-		fileHead.rootPos = node_pos;
+		btNode->nodeType = 1;
+		btNode->Count = 1;
+		btNode->key[0] = 0;
+		FSEEK_END_WRITE(fp, node_pos, btNode, sizeof(BTNode),1);
+		fileHead->rootPos = node_pos;
 
 		/** 初始化btNode指向的第一个dataNode **/
-		dataNode = { 2,0,true,true};
-		dataNode.parent = node_pos;
-		FSEEK_END_WRITE(fp, node_pos, (char*)&dataNode, sizeof(DataNode),2);
-		btNode.ptr[0] = node_pos;
+		
+		dataNode->nodeType = 2;
+		dataNode->Count = 0;
+		dataNode->Is_inc_insert = true;
+		dataNode->Is_dec_insert = true;
+		dataNode->parent = node_pos;
+		FSEEK_END_WRITE(fp, node_pos, dataNode, sizeof(DataNode),2);
+		btNode->ptr[0] = node_pos;
 
-		FSEEK_FIXED_WRITE(fp, 0, (char*)&fileHead, sizeof(fileHead));
-		FSEEK_FIXED_WRITE(fp, fileHead.rootPos, (char*)&btNode, sizeof(btNode));
+		FSEEK_FIXED_WRITE(fp, 0, fileHead, sizeof(FileHead));
+		FSEEK_FIXED_WRITE(fp, fileHead->rootPos, btNode, sizeof(BTNode));
 
 		CLOSE_FILE(fp);
+		FREE_NODE(fileHead);
+		FREE_NODE(btNode);
+		FREE_NODE(dataNode);
 	}
 
 	else {
