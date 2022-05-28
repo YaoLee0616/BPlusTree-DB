@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="bufferPool.cpp" />
     <ClCompile Include="deleteFunc.cpp" />
     <ClCompile Include="insertFunc.cpp" />
     <ClCompile Include="main.cpp" />

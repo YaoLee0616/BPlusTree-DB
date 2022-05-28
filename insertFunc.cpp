@@ -1,53 +1,61 @@
 #include "functions.h"
 
-/* 获取文件中页的数量 */
-uint getPageCount() {
-	MALLOC_PAGE(fileHeadBuf, FileHead);
-	FSEEK_FIXED_READ(fp, 0, fileHeadBuf, sizeof(FileHead));
-	uint page_count = fileHeadBuf->page_count;
-	FREE_PAGE(fileHeadBuf);
-	return page_count;
-}
-
 /* 更新文件头信息 */
-void updateFileHead(uint new_root_page_pos) {
-	MALLOC_PAGE(fileHeadBuf, FileHead);
-	FSEEK_FIXED_READ(fp, 0, fileHeadBuf, sizeof(FileHead));
-	if (new_root_page_pos > 0) {
-		fileHeadBuf->root_page_pos = new_root_page_pos;
+void updateFileHead(uint new_root_page_id) {
+	if (new_root_page_id != 1) {
+		buffer_pool_file_head.root_page_id = new_root_page_id;
 	}
-	fileHeadBuf->page_count++;
-	FSEEK_FIXED_WRITE(fp, 0, fileHeadBuf, sizeof(FileHead));
-	FREE_PAGE(fileHeadBuf);
+	buffer_pool_file_head.page_count++;
 }
 
 /* 插入索引页 */
-BTPage insertBTPage(uint page_pos, int index, uint key, uint ap) {
+BTPage insertBTPage(uint page_id, int index, uint key, uint ap) {
 
 	BTPage buf;
 	BTPage* btPageBuf = &buf;
 
-	FSEEK_FIXED_READ(fp, page_pos, btPageBuf, sizeof(BTPage));
+	// BufferPool
+	if (btPageMap.count(page_id))
+		*btPageBuf = *btPageMap[page_id];
+
+	// 磁盘读取
+	else{
+		FSEEK_FIXED_READ(fp, page_id, btPageBuf, sizeof(BTPage));
+		btPageInsertBufferPool(btPageBuf);
+	}
 
 	int j;
 	for (j = btPageBuf->key_count - 1; j >= index; j--) {
 		btPageBuf->key[j + 1] = btPageBuf->key[j];
-		btPageBuf->child_page_pos[j + 1] = btPageBuf->child_page_pos[j];
+		btPageBuf->child_page_id[j + 1] = btPageBuf->child_page_id[j];
 	}
 	btPageBuf->key[index] = key;
-	btPageBuf->child_page_pos[index] = ap;
+	btPageBuf->child_page_id[index] = ap;
 
 	btPageBuf->key_count++;
-	FSEEK_FIXED_WRITE(fp, page_pos, btPageBuf, sizeof(BTPage));
-	return (*btPageBuf);
+
+	// 写入bufferpool
+	btPageInsertBufferPool(btPageBuf);
+
+	return (* btPageBuf);
 }
 
 /* 插入数据页 */
-DataPage insertDataPage(uint page_pos, int index, uint key, Data data) {
+DataPage insertDataPage(uint page_id, int index, uint key, Data* data) {
+
 	DataPage buf;
 	DataPage* dataPageBuf = &buf;
 
-	FSEEK_FIXED_READ(fp, page_pos, dataPageBuf, sizeof(DataPage));
+	// BufferPool
+	if (dataPageMap.count(page_id))
+		*dataPageBuf = *dataPageMap[page_id];
+
+	// 磁盘读取
+	else {
+		FSEEK_FIXED_READ(fp, page_id, dataPageBuf, sizeof(DataPage));
+		dataPageInsertBufferPool(dataPageBuf);
+	}
+	
 	if (index != 0) dataPageBuf->is_dec_insert = false;
 	if (index != dataPageBuf->key_count) dataPageBuf->is_inc_insert = false;
 
@@ -60,15 +68,18 @@ DataPage insertDataPage(uint page_pos, int index, uint key, Data data) {
 	}
 
 	dataPageBuf->key[index] = key;
-	dataPageBuf->data[index] = data;
+	dataPageBuf->data[index] = *data;
 
 	dataPageBuf->key_count++;
-	FSEEK_FIXED_WRITE(fp, page_pos, dataPageBuf, sizeof(DataPage));
+
+	// 写入bufferpool
+	dataPageInsertBufferPool(dataPageBuf);
+
 	return (*dataPageBuf);
 }
 
 /* 分裂数据页 */
-uint splitDataPage(DataPage* dataPageBuf, uint page_pos, int s) {
+uint splitDataPage(DataPage* dataPageBuf, uint page_id, int s) {
 
 	int i, j;
 	int n = dataPageBuf->key_count;
@@ -80,22 +91,34 @@ uint splitDataPage(DataPage* dataPageBuf, uint page_pos, int s) {
 		apDataPageBuf->key[j] = dataPageBuf->key[i];
 		apDataPageBuf->data[j] = dataPageBuf->data[i];
 	}
-	apDataPageBuf->page_type = 2;
+	uint page_count = buffer_pool_file_head.page_count;
+
+	apDataPageBuf->page_type = DATA_PAGE_TYPE;
 	apDataPageBuf->key_count = n - s - 1;
 	apDataPageBuf->is_inc_insert = true;
 	apDataPageBuf->is_dec_insert = true;
-	apDataPageBuf->parent_page_pos = dataPageBuf->parent_page_pos;
-	apDataPageBuf->prev_page_pos = page_pos;
-	apDataPageBuf->next_page_pos = dataPageBuf->next_page_pos;
+	apDataPageBuf->page_id = page_count;
+	apDataPageBuf->parent_page_id = dataPageBuf->parent_page_id;
+	apDataPageBuf->prev_page_id = page_id;
+	apDataPageBuf->next_page_id = dataPageBuf->next_page_id;
 
-	uint page_count = getPageCount();
-	FSEEK_END_WRITE(fp, ap, apDataPageBuf, sizeof(DataPage), page_count);
+	// 写入磁盘文件
+	FSEEK_END_WRITE(fp, apDataPageBuf, sizeof(DataPage), page_count);
+	// 写入bufferpool
+	dataPageInsertBufferPool(apDataPageBuf);
 
-	updateFileHead(0);
+	ap = page_count;
+
+	updateFileHead(1);
+
+	dataPageInsertBufferPool(dataPageBuf);
 
 	dataPageBuf->key_count = s + 1;
-	dataPageBuf->next_page_pos = ap;
-	FSEEK_FIXED_WRITE(fp, page_pos, dataPageBuf, sizeof(DataPage));
+	dataPageBuf->next_page_id = ap;
+
+	// 写入bufferpool
+	dataPageInsertBufferPool(dataPageBuf);
+
 	FREE_PAGE(apDataPageBuf);
 	return ap;
 }
@@ -113,35 +136,51 @@ uint splitBTPage(BTPage* btPageBuf, uint page_pos, int s) {
 
 	for (i = s, j = 0; i < n; i++, j++) {
 		apBTPageBuf->key[j] = btPageBuf->key[i];
-		apBTPageBuf->child_page_pos[j] = btPageBuf->child_page_pos[i];
+		apBTPageBuf->child_page_id[j] = btPageBuf->child_page_id[i];
 	}
-	apBTPageBuf->page_type = 1;
+	uint page_count = buffer_pool_file_head.page_count;
+	apBTPageBuf->page_type = BT_PAGE_TYPE;
 	apBTPageBuf->key_count = n - s;
-	apBTPageBuf->parent_page_pos = btPageBuf->parent_page_pos;
+	apBTPageBuf->page_id = page_count;
+	apBTPageBuf->parent_page_id = btPageBuf->parent_page_id;
 
-	uint page_count = getPageCount();
-	FSEEK_END_WRITE(fp, ap, apBTPageBuf, sizeof(BTPage), page_count);
+	FSEEK_END_WRITE(fp, apBTPageBuf, sizeof(BTPage), page_count);
+	btPageInsertBufferPool(apBTPageBuf);
 
-	updateFileHead(0);
+	ap = page_count;
 
+	updateFileHead(1);
+	
 	for (int i = 0; i < n - s; i++) {
-		if (apBTPageBuf->child_page_pos[i] != 0) {
-			FSEEK_FIXED_READ(fp, apBTPageBuf->child_page_pos[i], apBTPageBufChild, sizeof(BTPage));
-			if (apBTPageBufChild->page_type == 2) {
-				FSEEK_FIXED_READ(fp, apBTPageBuf->child_page_pos[i], apDataPageBufChild, sizeof(DataPage));
-				apDataPageBufChild->parent_page_pos = ap;
-				FSEEK_FIXED_WRITE(fp, apBTPageBuf->child_page_pos[i], apDataPageBufChild, sizeof(DataPage));
+		if (apBTPageBuf->child_page_id[i] != 0) {
+			uint page_id = apBTPageBuf->child_page_id[i];
+			if (btPageMap.count(page_id))
+				*apBTPageBufChild = *btPageMap[page_id];
+			else {
+				FSEEK_FIXED_READ(fp, page_id, apBTPageBufChild, sizeof(BTPage));
+			}
+			
+			if (apBTPageBufChild->page_type == DATA_PAGE_TYPE) {
+				if (dataPageMap.count(page_id))
+					*apDataPageBufChild = *dataPageMap[page_id];
+				else {
+					FSEEK_FIXED_READ(fp, page_id, apDataPageBufChild, sizeof(DataPage));	
+					dataPageInsertBufferPool(apDataPageBufChild);
+				}
+				apDataPageBufChild->parent_page_id = ap;
+				dataPageInsertBufferPool(apDataPageBufChild);
 			}
 			else {
-				apBTPageBufChild->parent_page_pos = ap;
-				FSEEK_FIXED_WRITE(fp, apBTPageBuf->child_page_pos[i], apBTPageBufChild, sizeof(BTPage));
+				btPageInsertBufferPool(apBTPageBufChild);
+				apBTPageBufChild->parent_page_id = ap;
+				btPageInsertBufferPool(apBTPageBufChild);
 			}
 		}
 	}
 
+	btPageInsertBufferPool(btPageBuf);
 	btPageBuf->key_count = s;
-
-	FSEEK_FIXED_WRITE(fp, page_pos, btPageBuf, sizeof(BTPage));
+	btPageInsertBufferPool(btPageBuf);
 	FREE_PAGE(apBTPageBuf);
 	FREE_PAGE(apBTPageBufChild);
 	FREE_PAGE(apDataPageBufChild);
@@ -149,42 +188,62 @@ uint splitBTPage(BTPage* btPageBuf, uint page_pos, int s) {
 }
 
 /* 新建根页面 */
-void newRoot(uint root_page_pos, uint key, uint ap) {
-	uint pos;
+void newRoot(uint root_page_id, uint key, uint ap) {
+	uint id;
+
 	MALLOC_PAGE(rootBTPageBuf, BTPage);
-	rootBTPageBuf->page_type = 1;
+
+	uint page_count = buffer_pool_file_head.page_count;
+
+	rootBTPageBuf->page_type = BT_PAGE_TYPE;
 	rootBTPageBuf->key_count = 2;
-	rootBTPageBuf->child_page_pos[0] = root_page_pos;
-	rootBTPageBuf->child_page_pos[1] = ap;
+	rootBTPageBuf->page_id = page_count;
+	rootBTPageBuf->child_page_id[0] = root_page_id;
+	rootBTPageBuf->child_page_id[1] = ap;
 	rootBTPageBuf->key[0] = 0;
 	rootBTPageBuf->key[1] = key;
 
-	uint page_count = getPageCount();
-	FSEEK_END_WRITE(fp, pos, rootBTPageBuf, sizeof(BTPage), page_count);
 
-	/* 读取原根页面更新parent_page_pos位置 */
-	FSEEK_FIXED_READ(fp, root_page_pos, rootBTPageBuf, sizeof(BTPage));
-	rootBTPageBuf->parent_page_pos = pos;
-	FSEEK_FIXED_WRITE(fp, root_page_pos, rootBTPageBuf, sizeof(BTPage));
+	btPageInsertBufferPool(rootBTPageBuf);
 
-	/* 读取分裂页面更新parent_page_pos位置 */
-	FSEEK_FIXED_READ(fp, ap, rootBTPageBuf, sizeof(BTPage));
-	rootBTPageBuf->parent_page_pos = pos;
-	FSEEK_FIXED_WRITE(fp, ap, rootBTPageBuf, sizeof(BTPage));
+	FSEEK_END_WRITE(fp, rootBTPageBuf, sizeof(BTPage), page_count);
 
-	updateFileHead(pos);
+	id = page_count;
 
+	/* 读取原根页面更新parent_page_id位置 */
+	if (btPageMap.count(root_page_id))
+		*rootBTPageBuf = *btPageMap[root_page_id];
+	else {
+		FSEEK_FIXED_READ(fp, root_page_id, rootBTPageBuf, sizeof(BTPage));
+		btPageInsertBufferPool(rootBTPageBuf);
+	}
+	rootBTPageBuf->parent_page_id = id;
+	btPageInsertBufferPool(rootBTPageBuf);
+
+
+	/* 读取分裂页面更新parent_page_id位置 */
+	if (btPageMap.count(ap))
+		*rootBTPageBuf = *btPageMap[ap];
+	else {
+		FSEEK_FIXED_READ(fp, ap, rootBTPageBuf, sizeof(BTPage));
+		btPageInsertBufferPool(rootBTPageBuf);
+	}
+	rootBTPageBuf->parent_page_id = id;
+	btPageInsertBufferPool(rootBTPageBuf);
+
+	updateFileHead(id);
 	FREE_PAGE(rootBTPageBuf);
 }
 
 /* 将数据插入B+树 */
-void insertBPlusTree(uint head_pos, uint key, uint page_pos, int i, Data data) {
+void insertBPlusTree(uint root_page_id, uint key, uint page_id, int i, Data* data) {
 	int s = 0;
 	uint ap = 0;
 	bool finished = false;
 	bool needNewRoot = false;
 	DataPage dataPageBuf;
-	dataPageBuf = insertDataPage(page_pos, i, key, data);
+	BTPage btPageBuf;
+	dataPageBuf = insertDataPage(page_id, i, key, data);
 	if (dataPageBuf.key_count <= DATA_PAGE_KEY_MAX) finished = true;
 
 	if (!finished) {
@@ -197,27 +256,35 @@ void insertBPlusTree(uint head_pos, uint key, uint page_pos, int i, Data data) {
 		else {
 			s = (DATA_PAGE_KEY_MAX + 1) / 2 - 1;
 		}
-		ap = splitDataPage(&dataPageBuf, page_pos, s);
+		ap = splitDataPage(&dataPageBuf, page_id, s);
 		key = dataPageBuf.key[s];
-		page_pos = dataPageBuf.parent_page_pos;
-		BTPage btPageBuf;
-		FSEEK_FIXED_READ(fp, page_pos, &btPageBuf, sizeof(BTPage));
+		page_id = dataPageBuf.parent_page_id;
+		if (btPageMap.count(page_id))
+			btPageBuf = *btPageMap[page_id];
+		else {
+			FSEEK_FIXED_READ(fp, page_id, &btPageBuf, sizeof(BTPage));
+			btPageInsertBufferPool(&btPageBuf);
+		}
 		i = searchBTIndex(&btPageBuf, key);
 	}
 
-	BTPage btPageBuf;
 	while (!needNewRoot && !finished) {
-		btPageBuf = insertBTPage(page_pos, i, key, ap);
+		btPageBuf = insertBTPage(page_id, i, key, ap);
 		if (btPageBuf.key_count <= BT_PAGE_KEY_MAX) {
 			finished = true;
 		}
 		else {
-			s = (BT_PAGE_KEY_MAX + 1) / 2 - 1;
-			ap = splitBTPage(&btPageBuf, page_pos, s);
+			s = (BT_PAGE_KEY_MAX + 1) / 2-1;
+			ap = splitBTPage(&btPageBuf, page_id, s);
 			key = btPageBuf.key[s];
-			if (btPageBuf.parent_page_pos != 0) {
-				page_pos = btPageBuf.parent_page_pos;
-				FSEEK_FIXED_READ(fp, page_pos, &btPageBuf, sizeof(BTPage));
+			if (btPageBuf.parent_page_id != 0) {
+				page_id = btPageBuf.parent_page_id;
+				if (btPageMap.count(page_id))
+					btPageBuf = *btPageMap[page_id];
+				else {
+					FSEEK_FIXED_READ(fp, page_id, &btPageBuf, sizeof(BTPage));
+					btPageInsertBufferPool(&btPageBuf);
+				}
 				i = searchBTIndex(&btPageBuf, key);
 			}
 			else {
@@ -226,25 +293,22 @@ void insertBPlusTree(uint head_pos, uint key, uint page_pos, int i, Data data) {
 		}
 	}
 	if (needNewRoot) {
-		newRoot(head_pos, key, ap);
+		newRoot(root_page_id, key, ap);
 	}
 }
-/* 插入单条数据 */
-bool insertData(Data data, uint key) {
-	MALLOC_PAGE(fileHeadBuf, FileHead);
 
-	OPEN_FILE_READ(FILE_NAME, "rb+", fileHeadBuf, sizeof(FileHead));
+/* 插入单条数据 */
+bool insertData(Data* data, uint key) {
+	fp = OPEN_FILE(FILE_NAME, "rb+");
 	Result result;
-	searchDataPage(fileHeadBuf->root_page_pos, key, &result);
+	searchDataPage(buffer_pool_file_head.root_page_id, key, &result);
 	if (result.is_found) {
 		cout << "index:" << key << " already exists" << endl;
-		FREE_PAGE(fileHeadBuf);
 		CLOSE_FILE(fp);
 		return false;
 	}
 	else {
-		insertBPlusTree(fileHeadBuf->root_page_pos, key, result.pos, result.index, data);
-		FREE_PAGE(fileHeadBuf);
+		insertBPlusTree(buffer_pool_file_head.root_page_id, key, result.page_id, result.index, data);
 		CLOSE_FILE(fp);
 		return true;
 	}
@@ -268,8 +332,10 @@ int loadCsvData(string csv_file_name) {
 		strcpy(data.c2, strList[2].c_str());
 		strcpy(data.c3, strList[3].c_str());
 		strcpy(data.c4, strList[4].c_str());
-		if (insertData(data, key))
-			cnt++;
+		if (insertData(&data, key)) {
+			cnt++; 
+		}
+
 	}
 
 	inFile.close();

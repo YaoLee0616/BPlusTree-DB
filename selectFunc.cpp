@@ -66,74 +66,93 @@ void printData(DataPage* dataPageBuf, vector<bool> field, int index) {
 }
 
 // 查找数据页
-void searchDataPage(uint page__pos, uint key, Result* result) {
+void searchDataPage(uint page_id, uint key, Result* result) {
 
 	int i = 0;
 	bool is_found = false;
-
+	
+	MALLOC_PAGE(dataPageBuf,DataPage);
 	MALLOC_PAGE(btPageBuf, BTPage);
-	MALLOC_PAGE(dataPageBuf, DataPage);
 
-	while (page__pos != 0 && !is_found) {
-		FSEEK_FIXED_READ(fp, page__pos, btPageBuf, sizeof(BTPage));
+	while (page_id != 0 && !is_found) {
+		
+		if (btPageMap.count(page_id))
+			*btPageBuf = *btPageMap[page_id];
+		else {
+			 FSEEK_FIXED_READ(fp, page_id, btPageBuf, sizeof(BTPage));
+		}
 
-		if (btPageBuf->page_type == 2) {
-			FSEEK_FIXED_READ(fp, page__pos, dataPageBuf, sizeof(DataPage));
+		if (btPageBuf->page_type == DATA_PAGE_TYPE) {
+			if (dataPageMap.count(page_id))
+				*dataPageBuf = *dataPageMap[page_id];
+			else {
+				FSEEK_FIXED_READ(fp, page_id, dataPageBuf, sizeof(DataPage));
+				dataPageInsertBufferPool(dataPageBuf);
+			}
 			i = searchDataIndex(dataPageBuf, key);
 			if (i < dataPageBuf->key_count && dataPageBuf->key[i] == key)
 				is_found = true;
 			break;
 		}
 		else {
+			btPageInsertBufferPool(btPageBuf);
 			i = searchBTIndex(btPageBuf, key);
-			page__pos = btPageBuf->child_page_pos[i - 1];
+			page_id = btPageBuf->child_page_id[i - 1];
 		}
 
 	}
-	result->pos = page__pos;
+	result->page_id = page_id;
 	result->index = i;
 	result->is_found = is_found;
 
-	FREE_PAGE(btPageBuf);
 	FREE_PAGE(dataPageBuf);
+	FREE_PAGE(btPageBuf);
 }
 
 /* 主键等值查询数据 */
 bool selectData(uint key, vector<bool> field) {
-	MALLOC_PAGE(fileHeadBuf, FileHead);
-	MALLOC_PAGE(dataPageBuf, DataPage);
 
-	OPEN_FILE_READ(FILE_NAME, "rb+", fileHeadBuf, sizeof(FileHead));
+	fp = OPEN_FILE(FILE_NAME,"rb+");
+
 	Result result;
-	searchDataPage(fileHeadBuf->root_page_pos, key, &result);
+	searchDataPage(buffer_pool_file_head.root_page_id, key, &result);
+
 	if (!result.is_found) {
-		FREE_PAGE(fileHeadBuf);
-		FREE_PAGE(dataPageBuf);
 		CLOSE_FILE(fp);
 		return false;
 	}
+
 	else {
-		FSEEK_FIXED_READ(fp, result.pos, dataPageBuf, sizeof(DataPage));
+		MALLOC_PAGE(dataPageBuf, DataPage);
+		if(dataPageMap.count(result.page_id))
+			*dataPageBuf= *dataPageMap[result.page_id];
+		else {
+			FSEEK_FIXED_READ(fp, result.page_id, dataPageBuf, sizeof(DataPage));
+			dataPageInsertBufferPool(dataPageBuf);
+		}
 		printHeader(field);
 		printData(dataPageBuf, field, result.index);
-		FREE_PAGE(fileHeadBuf);
-		FREE_PAGE(dataPageBuf);
 		CLOSE_FILE(fp);
+		FREE_PAGE(dataPageBuf);
 		return true;
 	}
 }
 
 /* 主键索引范围扫描查询数据 */
 void selectRangeData(uint left, uint right, vector<bool> field) {
-	MALLOC_PAGE(fileHeadBuf, FileHead);
-	MALLOC_PAGE(dataPageBuf, DataPage);
 
-	OPEN_FILE_READ(FILE_NAME, "rb+", fileHeadBuf, sizeof(FileHead));
+	fp= OPEN_FILE(FILE_NAME, "rb+");
+
 	Result result;
-	searchDataPage(fileHeadBuf->root_page_pos, left, &result);
-
-	FSEEK_FIXED_READ(fp, result.pos, dataPageBuf, sizeof(DataPage));
-
+	if (left < 1) left = 1;
+	searchDataPage(buffer_pool_file_head.root_page_id, left, &result);
+	MALLOC_PAGE(dataPageBuf, DataPage);
+	if (dataPageMap.count(result.page_id))
+		*dataPageBuf = *dataPageMap[result.page_id];
+	else {
+		FSEEK_FIXED_READ(fp, result.page_id, dataPageBuf, sizeof(DataPage));
+		dataPageInsertBufferPool(dataPageBuf);
+	}
 
 	printHeader(field);
 	uint cur = result.index;
@@ -144,8 +163,14 @@ void selectRangeData(uint left, uint right, vector<bool> field) {
 			cur++;
 		}
 		else {
-			if (dataPageBuf->next_page_pos != 0) {
-				FSEEK_FIXED_READ(fp, dataPageBuf->next_page_pos, dataPageBuf, sizeof(DataPage));
+			if (dataPageBuf->next_page_id != 0) {
+				uint page_id = dataPageBuf->next_page_id;
+				if (dataPageMap.count(page_id))
+					*dataPageBuf = *dataPageMap[page_id];
+				else {
+					FSEEK_FIXED_READ(fp, page_id, dataPageBuf, sizeof(DataPage));
+					dataPageInsertBufferPool(dataPageBuf);
+				}
 				cur = 0;
 			}
 			else {
@@ -154,25 +179,27 @@ void selectRangeData(uint left, uint right, vector<bool> field) {
 
 		}
 	}
-	FREE_PAGE(fileHeadBuf);
-	FREE_PAGE(dataPageBuf);
 	CLOSE_FILE(fp);
+	FREE_PAGE(dataPageBuf);
 }
 
 /* 主键索引范围扫描的查询导出数据 */
 int outputCsvData(uint left, uint right, string csv_file_name) {
+	fp = OPEN_FILE(FILE_NAME, "rb+");
 	ofstream outFile(csv_file_name, ios::out);
-	MALLOC_PAGE(fileHeadBuf, FileHead);
-	MALLOC_PAGE(dataPageBuf, DataPage);
 
-	OPEN_FILE_READ(FILE_NAME, "rb+", fileHeadBuf, sizeof(FileHead));
 	Result result;
-	searchDataPage(fileHeadBuf->root_page_pos, left, &result);
-
-	FSEEK_FIXED_READ(fp, result.pos, dataPageBuf, sizeof(DataPage));
+	if (left < 1) left = 1;
+	searchDataPage(buffer_pool_file_head.root_page_id, left, &result);
 
 	int cnt = 0;
-
+	MALLOC_PAGE(dataPageBuf, DataPage);
+	if (dataPageMap.count(result.page_id))
+		*dataPageBuf = *dataPageMap[result.page_id];
+	else {
+		FSEEK_FIXED_READ(fp, result.page_id, dataPageBuf, sizeof(DataPage));
+		dataPageInsertBufferPool(dataPageBuf);
+	}
 	uint cur = result.index;
 	while (dataPageBuf->key[cur] <= right) {
 
@@ -189,8 +216,14 @@ int outputCsvData(uint left, uint right, string csv_file_name) {
 			cur++;
 		}
 		else {
-			if (dataPageBuf->next_page_pos != 0) {
-				FSEEK_FIXED_READ(fp, dataPageBuf->next_page_pos, dataPageBuf, sizeof(DataPage));
+			if (dataPageBuf->next_page_id != 0) {
+				uint page_id = dataPageBuf->next_page_id;
+				if (dataPageMap.count(page_id))
+					*dataPageBuf = *dataPageMap[page_id];
+				else {
+					FSEEK_FIXED_READ(fp, page_id, dataPageBuf, sizeof(DataPage));
+					dataPageInsertBufferPool(dataPageBuf);
+				}
 				cur = 0;
 			}
 			else {
@@ -199,8 +232,7 @@ int outputCsvData(uint left, uint right, string csv_file_name) {
 		}
 	}
 	outFile.close();
-	FREE_PAGE(fileHeadBuf);
-	FREE_PAGE(dataPageBuf);
+
 	CLOSE_FILE(fp);
 	return cnt;
 }

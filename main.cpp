@@ -1,6 +1,31 @@
 #include"functions.h"
 
+/* È«¾Ö±äÁ¿ */
 FILE* fp; // È«¾Ö±äÁ¿fp
+
+// file_head
+FileHead buffer_pool_file_head;
+
+// all_list
+BTPageListItem bt_page_all_list_head;
+DataPageListItem data_page_all_list_head;
+int bt_page_all_list_count;
+int data_page_all_list_count;
+
+// flush_list
+BTPageListItem bt_page_flush_list_head;
+DataPageListItem data_page_flush_list_head;
+int bt_page_flush_list_count;
+int data_page_flush_list_count;
+
+// hash_map
+map<int, BTPage*> btPageMap;
+map<int, DataPage*> dataPageMap;
+
+// flush_list_hash_map
+map<int, BTPage*> flushListBTPageMap;
+map<int, DataPage*> flushListDataPageMap;
+
 
 void Stringsplit(string str, const char split, vector<string>& res) // ·Ö¸î×Ö·û´®
 {
@@ -11,55 +36,81 @@ void Stringsplit(string str, const char split, vector<string>& res) // ·Ö¸î×Ö·û´
 		res.push_back(token);
 	}
 }
+void initialBufferPool() {
+
+	free();
+
+	// all_list
+	bt_page_all_list_count = 0;
+	data_page_all_list_count = 0;
+	bt_page_all_list_head.next = NULL;
+	data_page_all_list_head.next = NULL;
+
+	// flush_list
+	bt_page_flush_list_count = 0;
+	data_page_flush_list_count = 0;
+	bt_page_flush_list_head.next = NULL;
+	data_page_flush_list_head.next = NULL;
+
+	// hash_map
+	btPageMap.erase(btPageMap.begin(), btPageMap.end());
+	dataPageMap.erase(dataPageMap.begin(), dataPageMap.end());
+	flushListBTPageMap.erase(flushListBTPageMap.begin(), flushListBTPageMap.end());
+	flushListDataPageMap.erase(flushListDataPageMap.begin(), flushListDataPageMap.end());
+
+	// buffer_pool_file_head
+	fp = OPEN_FILE(FILE_NAME, "rb");
+	MALLOC_PAGE(fileHead, FileHead);
+	FSEEK_FIXED_READ(fp, 0, fileHead, sizeof(FileHead));
+	CLOSE_FILE(fp);
+	buffer_pool_file_head = *fileHead;
+
+}
 
 /* ´´½¨Êý¾ÝÎÄ¼þ */
 void createDataFile() {
 	fp = OPEN_FILE(FILE_NAME, "rb");
 	if (fp == NULL) {
-
-		uint page_pos;
+		fp = OPEN_FILE(FILE_NAME, "wb+");
 
 		MALLOC_PAGE(fileHead, FileHead);
 		MALLOC_PAGE(btPage, BTPage);
 		MALLOC_PAGE(dataPage, DataPage);
 
-
-		fp = OPEN_FILE(FILE_NAME, "wb+");
-
 		/* ³õÊ¼»¯fileHead */
 		fileHead->order = DATA_PAGE_KEY_MAX;
 		fileHead->page_size = PAGE_MAX_LENGTH;
 		fileHead->page_count = 3;
-		fileHead->root_page_pos = 0;
+		fileHead->root_page_id = 1;
 
-		FSEEK_END_WRITE(fp, page_pos, fileHead, sizeof(FileHead), 0);
+		FSEEK_END_WRITE(fp, fileHead, sizeof(FileHead), 0);
 
 		/** ³õÊ¼»¯fileHeadÖ¸ÏòµÄµÚÒ»¸öbtPage **/
-		btPage->page_type = 1;
+		btPage->page_type = BT_PAGE_TYPE;
 		btPage->key_count = 1;
+
+		btPage->page_id = 1;
+
 		btPage->key[0] = 0;
-		FSEEK_END_WRITE(fp, page_pos, btPage, sizeof(BTPage), 1);
-		fileHead->root_page_pos = page_pos;
+		btPage->child_page_id[0] = 2;
+		FSEEK_END_WRITE(fp, btPage, sizeof(BTPage), 1);
 
 		/** ³õÊ¼»¯btPageÖ¸ÏòµÄµÚÒ»¸ödataPage **/
 
-		dataPage->page_type = 2;
+		dataPage->page_type = DATA_PAGE_TYPE;
 		dataPage->key_count = 0;
 		dataPage->is_inc_insert = true;
 		dataPage->is_dec_insert = true;
-		dataPage->parent_page_pos = page_pos;
-		FSEEK_END_WRITE(fp, page_pos, dataPage, sizeof(DataPage), 2);
-		btPage->child_page_pos[0] = page_pos;
 
-		FSEEK_FIXED_WRITE(fp, 0, fileHead, sizeof(FileHead));
-		FSEEK_FIXED_WRITE(fp, fileHead->root_page_pos, btPage, sizeof(BTPage));
+		dataPage->page_id = 2;
+		dataPage->parent_page_id = 1;
+		FSEEK_END_WRITE(fp, dataPage, sizeof(DataPage), 2);
 
 		CLOSE_FILE(fp);
 		FREE_PAGE(fileHead);
 		FREE_PAGE(btPage);
 		FREE_PAGE(dataPage);
 	}
-
 	else {
 		CLOSE_FILE(fp);
 	}
@@ -83,8 +134,33 @@ vector<bool> fieldChoice(string str) {
 	return field;
 }
 
+/* °ïÖúÎÄµµ */
+void help() {
+	cout << "******************************************************************************************************************" << endl;
+	cout << "  .help                                                                                print help message;" << endl;
+	cout << "  .reset                                                                               delete db file;" << endl;
+	cout << "  shutdown                                                                             exit program;" << endl;
+	cout << "  insert {a} {c1} {c2} {c3} {c4}                                                       insert record;" << endl;
+	cout << "  insert {infile}                                                                      load records from file;" << endl;
+	cout << "  select * where a={index}                                                             search a record by index;" << endl;
+	cout << "  select * where a between {minIndex} and {maxIndex}                                   search records between indexs;" << endl;
+	cout << "  select into {outfile} where a between {minIndex} and {maxIndex}                      export records between indexs;" << endl;
+	cout << "******************************************************************************************************************" << endl;
+}
+
+/* »¶Ó­½çÃæ */
+void welcome()
+{
+	cout << "******************************************************************************************************************" << endl;
+	cout << "                               Welcome to the bplus_tree_db                           " << endl;
+	cout << "                               db file locates in \"./data.ibd\"                 " << endl;
+	help();
+}
+
 int main() {
-	createDataFile(); // Ã»ÓÐÊý¾ÝÎÄ¼þÊ±£¬ÐèÒª´´½¨Êý¾ÝÎÄ¼þ
+	welcome();
+	createDataFile(); // Ã»ÓÐÊý¾ÝÎÄ¼þÊ±, ÐèÒª´´½¨Êý¾ÝÎÄ¼þ
+	initialBufferPool();
 	while (true)
 	{
 		cout << '>';
@@ -109,9 +185,10 @@ int main() {
 				clock_t start, end;
 				start = clock();
 
-				if (insertData(data, key)) {
+				if (insertData(&data, key)) {
+					flush();
 					end = clock();
-					cout << "executed insert index:" << key << "£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+					cout << "executed insert index:" << key << ", time:" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
 				}
 			}
 			else if (strList.size() == 2) { // ÒÔÎÄ¼þµ¼ÈëµÄ·½Ê½²åÈë´óÁ¿Êý¾Ý
@@ -120,9 +197,9 @@ int main() {
 
 				cout << "load data begin. . ." << endl;
 				int cnt = loadCsvData(strList[1]);
-
+				flush();
 				end = clock();
-				cout << "load data end£¬" << cnt << " rows are inserted£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+				cout << "load data end, " << cnt << " rows are inserted, time:" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
 			}
 			else {
 				cout << ERROR << endl;
@@ -142,11 +219,11 @@ int main() {
 
 				if (selectData(stoi(strList[1]), field)) {
 					end = clock();
-					cout << "executed search£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+					cout << "executed search, time:" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
 				}
 				else {
 					end = clock();
-					cout << "index:" << stoi(strList[1]) << " doesn't exist£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+					cout << "index:" << stoi(strList[1]) << " doesn't exist, time:" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
 				}
 			}
 			else if (strList.size() == 8) { // Ö÷¼üË÷Òý·¶Î§É¨Ãè²éÑ¯Êý¾Ý
@@ -158,7 +235,7 @@ int main() {
 				selectRangeData(stoi(strList[5]), stoi(strList[7]), field);
 
 				end = clock();
-				cout << "executed search£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
+				cout << "executed search, time:" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;
 			}
 
 			else if (strList.size() == 9) { // Ö÷¼üË÷Òý·¶Î§É¨ÃèµÄ²éÑ¯µ¼³öÊý¾Ý
@@ -167,7 +244,7 @@ int main() {
 				start = clock();
 				outputCsvData(stoi(strList[6]), stoi(strList[8]), strList[2]);
 				end = clock();
-				cout << "export data end£¬time£º" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;  //Êä³öÊ±¼ä£¨µ¥Î»£º£ó£©
+				cout << "export data end, time:" << float(end - start) / CLOCKS_PER_SEC << " seconds" << endl;  //Êä³öÊ±¼ä£¨µ¥Î»:£ó£©
 			}
 			else {
 				cout << ERROR << endl;
@@ -180,18 +257,28 @@ int main() {
 			deleteData(); // TODO
 		}
 
+		/* ÖØÖÃ */
 		else if (menu.compare(RESET) == 0) {
 			remove(FILE_NAME);
 			createDataFile();
+			initialBufferPool();
+			cout << RESET_SUCCESSFUL << endl;
+		}
+
+		/* °ïÖúÎÄµµ */
+		else if (menu.compare(HELP) == 0) {
+			help();
 		}
 
 		/* ¹Ø±Õ³ÌÐò */
 		else if (menu.compare(SHUTDOWN) == 0) {
+			free();
 			return 0;
 		}
 
 		else {
 			cout << ERROR << endl;
 		}
+
 	}
 }
